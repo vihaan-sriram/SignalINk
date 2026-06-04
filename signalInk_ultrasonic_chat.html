@@ -1,0 +1,311 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --ink:#0a0a0f;--paper:#f5f4ef;--signal:#00c896;--noise:#ff4d6d;
+    --mid:#1a1a2e;--dim:rgba(10,10,15,0.4);--border:rgba(10,10,15,0.12);
+    --sent-bg:#e8f7f2;--recv-bg:#fff;
+  }
+  @media(prefers-color-scheme:dark){
+    :root{--ink:#e8e6d9;--paper:#0a0a0f;--signal:#00c896;--noise:#ff4d6d;--mid:#e8e6d9;--dim:rgba(232,230,217,0.35);--border:rgba(232,230,217,0.12);--sent-bg:#0d2e24;--recv-bg:#141414}
+  }
+  body{background:var(--paper);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15px;padding:0}
+  h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .app{max-width:640px;margin:0 auto;padding:1.5rem 1rem 2rem}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+  .logo{font-family:'Space Mono',monospace;font-size:1.2rem;font-weight:700;letter-spacing:-0.5px}
+  .logo span{color:var(--signal)}
+  .status-pill{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'Space Mono',monospace;padding:4px 10px;border-radius:20px;border:1px solid var(--border);color:var(--dim)}
+  .status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:background 0.3s,box-shadow 0.3s}
+  .status-pill.active .dot{background:var(--signal);box-shadow:0 0 6px var(--signal)}
+  .status-pill.active{color:var(--signal);border-color:var(--signal)}
+  .status-pill.error .dot{background:var(--noise)}
+  .status-pill.error{color:var(--noise);border-color:var(--noise)}
+
+  .canvas-wrap{background:var(--ink);border-radius:8px;padding:4px 0;margin-bottom:1rem;overflow:hidden;position:relative}
+  canvas#scope{display:block;width:100%;height:60px}
+  .scope-label{position:absolute;top:5px;right:8px;font-family:'Space Mono',monospace;font-size:9px;color:rgba(0,200,150,0.5);letter-spacing:1px}
+
+  .messages{min-height:200px;max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:0.75rem;display:flex;flex-direction:column;gap:8px;margin-bottom:1rem;background:var(--recv-bg)}
+  .msg{padding:8px 12px;border-radius:8px;font-size:14px;line-height:1.5;max-width:80%;word-break:break-word}
+  .msg.sent{background:var(--sent-bg);align-self:flex-end;border-bottom-right-radius:3px}
+  .msg.recv{background:var(--recv-bg);align-self:flex-start;border:1px solid var(--border);border-bottom-left-radius:3px}
+  .msg.sys{background:none;align-self:center;font-size:12px;font-family:'Space Mono',monospace;color:var(--dim);border:none;padding:2px 0}
+  .msg .label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.5px;margin-bottom:3px;opacity:0.5}
+  .msg .ts{font-size:10px;opacity:0.4;margin-top:3px;text-align:right}
+
+  .controls{display:flex;gap:8px;align-items:center}
+  .controls input[type=text]{flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--paper);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;transition:border-color 0.2s}
+  .controls input[type=text]:focus{border-color:var(--signal)}
+  .send-btn{padding:10px 18px;border-radius:8px;background:var(--signal);color:#0a0a0f;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;transition:opacity 0.2s,transform 0.1s}
+  .send-btn:hover{opacity:0.85}
+  .send-btn:active{transform:scale(0.97)}
+  .send-btn:disabled{opacity:0.3;cursor:not-allowed}
+
+  .settings-row{display:flex;gap:12px;margin-top:0.75rem;flex-wrap:wrap}
+  .setting{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'Space Mono',monospace;color:var(--dim)}
+  .setting label{font-size:11px}
+  .setting input[type=range]{width:70px;height:3px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:2px;outline:none}
+  .setting input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--signal);cursor:pointer}
+  .setting span{min-width:28px;font-size:11px;color:var(--signal)}
+
+  .progress-bar{height:2px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;display:none}
+  .progress-bar.active{display:block}
+  .progress-fill{height:100%;width:0%;background:var(--signal);border-radius:2px;transition:width 0.1s linear}
+</style>
+
+<h2 class="sr-only">SignalInk — ultrasonic chat app that encodes text as inaudible audio tones and decodes it via microphone</h2>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">Signal<span>Ink</span></div>
+    <div class="status-pill" id="statusPill"><div class="dot"></div><span id="statusText">idle</span></div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="scope" height="60"></canvas>
+    <div class="scope-label">FREQ MONITOR</div>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="msg sys">— connect a microphone to receive transmissions —</div>
+  </div>
+
+  <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+
+  <div class="controls">
+    <input type="text" id="msgInput" placeholder="Type a message to transmit…" maxlength="120">
+    <button class="send-btn" id="sendBtn">TX</button>
+  </div>
+
+  <div class="settings-row">
+    <div class="setting"><label>bit ms</label><input type="range" id="bitDur" min="50" max="200" step="10" value="80"><span id="bitDurVal">80</span></div>
+    <div class="setting"><label>f0 kHz</label><input type="range" id="freq0" min="17000" max="19500" step="500" value="18000"><span id="freq0Val">18k</span></div>
+    <div class="setting"><label>f1 kHz</label><input type="range" id="freq1" min="19500" max="22000" step="500" value="20000"><span id="freq1Val">20k</span></div>
+    <div class="setting"><label>vol</label><input type="range" id="vol" min="0.1" max="1.0" step="0.1" value="0.7"><span id="volVal">0.7</span></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let audioCtx = null, analyser = null, animFrame = null;
+let isListening = false, isSending = false;
+let receiveBuffer = [], lastBitTime = 0, syncState = 'idle';
+let gainNode = null;
+
+function getCtx(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function getSettings(){
+  return {
+    bitDur: parseInt($('bitDur').value)/1000,
+    f0: parseInt($('freq0').value),
+    f1: parseInt($('freq1').value),
+    vol: parseFloat($('vol').value)
+  };
+}
+
+function setStatus(state, txt){
+  const p=$('statusPill'), t=$('statusText');
+  p.className='status-pill'+(state?' '+state:'');
+  t.textContent=txt;
+}
+
+function addMsg(text, type, label){
+  const c=$('messages');
+  const d=document.createElement('div');
+  d.className='msg '+type;
+  if(label){const l=document.createElement('div');l.className='label';l.textContent=label;d.appendChild(l);}
+  const b=document.createElement('div');b.textContent=text;d.appendChild(b);
+  if(type!=='sys'){const ts=document.createElement('div');ts.className='ts';ts.textContent=new Date().toLocaleTimeString();d.appendChild(ts);}
+  c.appendChild(d);
+  c.scrollTop=c.scrollHeight;
+}
+
+function encodeMessage(msg){
+  const START='11111111'; const STOP='00000000';
+  return msg.split('').flatMap(ch=>{
+    const bits=ch.charCodeAt(0).toString(2).padStart(8,'0');
+    return [...START,...bits,...STOP];
+  });
+}
+
+async function sendMessage(msg){
+  if(isSending) return;
+  isSending=true;
+  $('sendBtn').disabled=true;
+  setStatus('active','transmitting');
+  const s=getSettings();
+  const ctx=getCtx();
+  if(ctx.state==='suspended') await ctx.resume();
+  const bits=encodeMessage(msg);
+  const samplesPerBit=Math.floor(ctx.sampleRate*s.bitDur);
+  const totalSamples=samplesPerBit*bits.length;
+  const buf=ctx.createBuffer(1,totalSamples,ctx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<bits.length;i++){
+    const f=bits[i]==='0'?s.f0:s.f1;
+    for(let j=0;j<samplesPerBit;j++){
+      const t=(i*samplesPerBit+j)/ctx.sampleRate;
+      const env=j<100?j/100:j>samplesPerBit-100?(samplesPerBit-j)/100:1;
+      d[i*samplesPerBit+j]=Math.sin(2*Math.PI*f*t)*env;
+    }
+  }
+  const src=ctx.createBufferSource();
+  src.buffer=buf;
+  const g=ctx.createGain();
+  g.gain.value=s.vol;
+  src.connect(g); g.connect(ctx.destination);
+  const bar=$('progressBar'), fill=$('progressFill');
+  bar.className='progress-bar active'; fill.style.width='0%';
+  const startT=Date.now(); const totalMs=bits.length*s.bitDur*1000;
+  function tick(){fill.style.width=Math.min(100,(Date.now()-startT)/totalMs*100).toFixed(1)+'%';if(isSending)requestAnimationFrame(tick);}
+  tick();
+  src.start();
+  src.onended=()=>{
+    addMsg(msg,'sent','TX');
+    isSending=false; $('sendBtn').disabled=false;
+    bar.className='progress-bar'; fill.style.width='0%';
+    setStatus(isListening?'active':'','');
+    if(isListening) setStatus('active','listening');
+  };
+}
+
+async function startListening(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const ctx=getCtx();
+    if(ctx.state==='suspended') await ctx.resume();
+    const src=ctx.createMediaStreamSource(stream);
+    analyser=ctx.createAnalyser();
+    analyser.fftSize=4096;
+    analyser.smoothingTimeConstant=0.0;
+    src.connect(analyser);
+    isListening=true;
+    setStatus('active','listening');
+    addMsg('microphone active — waiting for signal','sys');
+    lastBitTime=Date.now();
+    syncState='idle'; receiveBuffer=[];
+    processAudio();
+    drawScope();
+  }catch(e){
+    setStatus('error','mic denied');
+    addMsg('microphone access denied — receive disabled','sys');
+  }
+}
+
+function processAudio(){
+  if(!isListening||!analyser) return;
+  const s=getSettings();
+  const buf=new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(buf);
+  const sr=getCtx().sampleRate;
+  const fftSize=analyser.fftSize;
+  function mag(freq){
+    const b=Math.round(freq*fftSize/sr);
+    const w=3;
+    let max=-Infinity;
+    for(let i=Math.max(0,b-w);i<=Math.min(buf.length-1,b+w);i++) max=Math.max(max,buf[i]);
+    return max;
+  }
+  const m0=mag(s.f0), m1=mag(s.f1);
+  const now=Date.now();
+  const bitMs=s.bitDur*1000;
+  if(now-lastBitTime>=bitMs*0.85){
+    lastBitTime=now;
+    const THRESH=-45;
+    let bit=null;
+    if(m0>THRESH&&m0>m1+3) bit='0';
+    else if(m1>THRESH&&m1>m0+3) bit='1';
+    if(bit!==null) processBit(bit);
+  }
+  setTimeout(processAudio, Math.floor(getSettings().bitDur*1000*0.4));
+}
+
+let byteAccum=[], syncCount=0;
+function processBit(bit){
+  if(syncState==='idle'){
+    byteAccum.push(bit);
+    if(byteAccum.length>8) byteAccum.shift();
+    if(byteAccum.join('')==='11111111'){syncState='data';receiveBuffer=[];byteAccum=[];}
+  } else if(syncState==='data'){
+    byteAccum.push(bit);
+    if(byteAccum.length===8){
+      const byte=byteAccum.join('');
+      if(byte==='00000000'){
+        if(receiveBuffer.length>0){
+          const code=parseInt(receiveBuffer.join(''),2);
+          if(code>=32&&code<=126) addMsg(String.fromCharCode(code),'recv','RX');
+        }
+        receiveBuffer=[];
+        syncState='idle';
+      } else {
+        receiveBuffer=byteAccum.slice();
+      }
+      byteAccum=[];
+    }
+  }
+}
+
+function drawScope(){
+  if(!analyser) return;
+  const cv=$('scope'); if(!cv) return;
+  const dpr=window.devicePixelRatio||1;
+  const W=cv.offsetWidth,H=60;
+  cv.width=W*dpr; cv.height=H*dpr;
+  const c=cv.getContext('2d');
+  c.scale(dpr,dpr);
+  const s=getSettings();
+  const buf=new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(buf);
+  const sr=getCtx().sampleRate; const fftSize=analyser.fftSize;
+  const minF=16000, maxF=22500;
+  const minB=Math.floor(minF*fftSize/sr), maxB=Math.ceil(maxF*fftSize/sr);
+  c.clearRect(0,0,W,H);
+  c.fillStyle='#0a0a0f'; c.fillRect(0,0,W,H);
+  const pts=maxB-minB;
+  c.beginPath();
+  for(let i=0;i<pts;i++){
+    const val=Math.max(-90,Math.min(-10,buf[minB+i]));
+    const x=(i/pts)*W;
+    const y=H-(val+90)/(80)*H*0.9-4;
+    i===0?c.moveTo(x,y):c.lineTo(x,y);
+  }
+  c.strokeStyle='rgba(0,200,150,0.7)'; c.lineWidth=1.2; c.stroke();
+  function marker(freq,color,lbl){
+    const b=Math.round(freq*fftSize/sr);
+    const x=((b-minB)/pts)*W;
+    c.strokeStyle=color; c.lineWidth=1; c.setLineDash([2,2]);
+    c.beginPath(); c.moveTo(x,0); c.lineTo(x,H); c.stroke();
+    c.setLineDash([]);
+    c.fillStyle=color; c.font='8px Space Mono,monospace'; c.fillText(lbl,x+2,H-4);
+  }
+  marker(s.f0,'rgba(255,77,109,0.7)','f0'); marker(s.f1,'rgba(0,200,150,0.7)','f1');
+  animFrame=requestAnimationFrame(drawScope);
+}
+
+$('sendBtn').addEventListener('click',async()=>{
+  const msg=$('msgInput').value.trim();
+  if(!msg) return;
+  const ctx=getCtx();
+  if(ctx.state==='suspended') await ctx.resume();
+  $('msgInput').value='';
+  sendMessage(msg);
+});
+$('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter'){$('sendBtn').click();}});
+
+['bitDur','freq0','freq1','vol'].forEach(id=>{
+  $(id).addEventListener('input',()=>{
+    const v=parseInt($(id).value);
+    const s={bitDur:v+'',freq0:Math.round(v/1000)+'k',freq1:Math.round(v/1000)+'k',vol:(v/10).toFixed(1)};
+    if(id==='freq0'||id==='freq1') $(id+'Val').textContent=Math.round(v/1000)+'k';
+    else if(id==='vol') $('volVal').textContent=parseFloat($(id).value).toFixed(1);
+    else $(id+'Val').textContent=v;
+  });
+});
+
+startListening();
+</script>
